@@ -12,7 +12,7 @@ Tested on Armbian mainline kernel 6.19.x and 7.0.0.
 |---|---|
 | Board | OrangePi 3B v1.1 (RK3566) |
 | OS | DietPi OS (Debian Trixie) |
-| Kernel | 6.19.3-edge-rockchip64, 7.0.0-rc7-edge-rockchip64 |
+| Kernel | 7.2.9|
 | RKNN Runtime | librknnrt v2.3.2 |
 
 ## 2. Prerequisites
