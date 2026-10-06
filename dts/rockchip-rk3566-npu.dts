@@ -1,0 +1,123 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * DT overlay for RK3566 NPU support (non-IOMMU mode) - Standalone version.
+ *
+ * Direct Compile:
+ *   dtc -@ -I dts -O dtb -o rockchip-rk3566-npu.dtbo rockchip-rk3566-npu.dts
+ *
+ * Deploy (DietPi / Armbian):
+ *   cp rockchip-rk3566-npu.dtbo /boot/overlay-user/
+ *   # Add to /boot/armbianEnv.txt or /boot/dietpiEnv.txt: user_overlays=rockchip-rk3566-npu
+ */
+
+/dts-v1/;
+/plugin/;
+
+/* 1. SCMI clock extension for NPU (Using literal index 2 for SCMI_CLK_NPU) */
+&scmi_clk {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        scmi_npu: clock@2 {
+                reg = <2>;
+                #clock-cells = <1>;
+                clock-output-names = "clk_npu";
+        };
+};
+
+/* 2. NPU power domain */
+&power {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        pd_npu: power-domain@6 {
+                reg = <6>;
+                clocks = <&cru 39>,   /* ACLK_NPU_PRE */
+                         <&cru 37>,   /* HCLK_NPU_PRE */
+                         <&cru 38>;   /* PCLK_NPU_PRE */
+                pm_qos = <&qos_npu>;
+                #power-domain-cells = <0>;
+        };
+};
+
+/* 3. NPU device, IOMMU, and OPP table (root-level nodes) */
+&{/} {
+        #address-cells = <2>;
+        #size-cells = <2>;
+
+        npu_opp_table: opp-table-npu {
+                compatible = "operating-points-v2";
+
+                opp-200000000 {
+                        opp-hz = /bits/ 64 <200000000>;
+                        opp-microvolt = <850000 850000 1000000>;
+                };
+                opp-297000000 {
+                        opp-hz = /bits/ 64 <297000000>;
+                        opp-microvolt = <850000 850000 1000000>;
+                };
+                opp-400000000 {
+                        opp-hz = /bits/ 64 <400000000>;
+                        opp-microvolt = <850000 850000 1000000>;
+                };
+                opp-600000000 {
+                        opp-hz = /bits/ 64 <600000000>;
+                        opp-microvolt = <850000 850000 1000000>;
+                };
+                opp-700000000 {
+                        opp-hz = /bits/ 64 <700000000>;
+                        opp-microvolt = <875000 875000 1000000>;
+                };
+                opp-800000000 {
+                opp-hz = /bits/ 64 <800000000>;
+                opp-microvolt = <1000000 925000 1000000>;
+
+                };
+        };
+
+        npu@fde40000 {
+                compatible = "rockchip,rk3568-rknpu", "rockchip,rknpu";
+                reg = <0x00 0xfde40000 0x00 0x10000>;
+                interrupt-parent = <&gic>;
+                interrupts = <0 151 4>; /* GIC_SPI = 0, ID = 151, IRQ_TYPE_LEVEL_HIGH = 4 */
+                interrupt-names = "npu_irq";
+                clocks = <&scmi_clk 2>,       /* SCMI_CLK_NPU = 2 */
+                         <&cru 35>,           /* CLK_NPU = 35 */
+                         <&cru 40>,           /* ACLK_NPU = 40 */
+                         <&cru 41>;           /* HCLK_NPU = 41 */
+                clock-names = "scmi_clk", "clk", "aclk", "hclk";
+                assigned-clocks = <&cru 35>;
+                assigned-clock-rates = <600000000>;
+                resets = <&cru 43>, <&cru 44>; /* SRST_A_NPU = 43, SRST_H_NPU = 44 */
+                reset-names = "srst_a", "srst_h";
+                power-domains = <&power 6>;
+                operating-points-v2 = <&npu_opp_table>;
+                rknpu-supply = <&vdd_npu>;
+                //iommus = <&npu_iommu>;
+                status = "okay";
+        };
+
+        /*
+         * IOMMU for NPU — disabled for now
+         */
+        npu_iommu: iommu@fde4b000 {
+                compatible = "rockchip,rk3568-iommu";
+                reg = <0x00 0xfde4b000 0x00 0x40>;
+                interrupt-parent = <&gic>;
+                interrupts = <0 151 4>;
+                interrupt-names = "rknpu_mmu";
+                clocks = <&cru 40>, <&cru 41>; /* ACLK_NPU, HCLK_NPU */
+                clock-names = "aclk", "iface";
+                power-domains = <&power 6>;
+                #iommu-cells = <0>;
+                status = "disabled";
+        };
+};
+
+/* 4. Keep vdd_npu regulator always on --------------------------------- */
+
+&vdd_npu {
+        regulator-min-microvolt = <800000>;  /* 0.8V */
+        regulator-max-microvolt = <1100000>; /* 1.1V máximo seguro */
+        regulator-always-on;
+};
