@@ -3,8 +3,6 @@ Out-of-tree kernel module for the Rockchip RKNPU driver, ported from the [rockch
 Tested on kernel 7.2.8
 - **Note:** This driver enables IOMMU support for the NPU, allowing safe, isolated, and efficient memory management for shared tensor buffers.
 
-![An inference example](assets/inference.png)
-
 ## 1. Tested Environment
 
 | Item | Value |
