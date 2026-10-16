@@ -93,31 +93,24 @@
                 power-domains = <&power 6>;
                 operating-points-v2 = <&npu_opp_table>;
                 rknpu-supply = <&vdd_npu>;
-                //iommus = <&npu_iommu>;
+                iommus = <&npu_iommu>;
                 status = "okay";
         };
 
         /*
-         * IOMMU for NPU — disabled for now
+         * IOMMU for NPU — enabled for test and adjustment stage
          */
         npu_iommu: iommu@fde4b000 {
                 compatible = "rockchip,rk3568-iommu";
-                reg = <0x00 0xfde4b000 0x00 0x40>;
+                 //new memory range adjustment
+                reg = <0x00 0xfde4b000 0x00 0x100>;
                 interrupt-parent = <&gic>;
-                interrupts = <0 151 4>;
+                interrupts = <0 150 4>;
                 interrupt-names = "rknpu_mmu";
                 clocks = <&cru 40>, <&cru 41>; /* ACLK_NPU, HCLK_NPU */
                 clock-names = "aclk", "iface";
                 power-domains = <&power 6>;
                 #iommu-cells = <0>;
-                status = "disabled";
+                status = "okay";
         };
-};
-
-/* 4. Keep vdd_npu regulator always on --------------------------------- */
-
-&vdd_npu {
-        regulator-min-microvolt = <800000>;  /* 0.8V */
-        regulator-max-microvolt = <1100000>; /* 1.1V máximo seguro */
-        regulator-always-on;
 };
