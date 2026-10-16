@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 /*
- * DT overlay for RK3566 NPU support (non-IOMMU mode) - Standalone version.
+ * DT overlay for RK3566 NPU support (OMMU mode) - Standalone version.
  *
  * Direct Compile:
- *   dtc -@ -I dts -O dtb -o rockchip-rk3566-npu.dtbo rockchip-rk3566-npu.dts
+ *   dtc -@ -I dts -O dtb -o rockchip-rk3566-npu.dtbo rk3566-npu.dts
  *
- * Deploy (DietPi / Armbian):
- *   cp rockchip-rk3566-npu.dtbo /boot/overlay-user/
- *   # Add to /boot/armbianEnv.txt or /boot/dietpiEnv.txt: user_overlays=rockchip-rk3566-npu
  */
 
 /dts-v1/;
