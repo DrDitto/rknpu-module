@@ -2,6 +2,12 @@
 /*
  * Copyright (C) Rockchip Electronics Co., Ltd.
  * Author: Felix Zeng <felix.zeng@rock-chips.com>
+ * 
+ * Repository: DittoSystems (Native-Only Build)(DrDitto and MasterChief=>Tailor AI Assistant)
+ * Target Environment: Generic/Mainline Linux Kernel 7.2.9 (RK3566 SoC)
+ * Architecture Notes: Native execution relying on CMA/DMA (Non-IOMMU / BSP-decoupled)
+ * Description: Refactored RKNPU driver stripped of proprietary BSP dependencies,
+ *              optimized for production-ready bare hardware integration.
  */
 
 #include <linux/slab.h>
@@ -461,11 +467,7 @@ CREATE_FAIL:
 #ifdef CONFIG_ROCKCHIP_RKNPU_PROC_FS
 static int rknpu_procfs_open(struct inode *inode, struct file *file)
 {
-#if KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE
 	struct rknpu_debugger_node *node = PDE_DATA(inode);
-#else
-	struct rknpu_debugger_node *node = pde_data(inode);
-#endif
 
 	return single_open(file, node->info_ent->show, node);
 }
