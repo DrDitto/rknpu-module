@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) Rockchip Electronics Co., Ltd.
- * Author: Finley Xiao <finley.xiao@rock-chips.com>
- *
- * Rewritten for mainline kernel (out-of-tree module) using standard
- * Linux devfreq / OPP APIs.  All Rockchip-private helpers
- * (rockchip_opp_select, rockchip_system_monitor, rockchip_ipa, etc.)
- * have been removed.
+ * Author: Felix Zeng <felix.zeng@rock-chips.com>
+ * 
+ * Repository: DittoSystems (Native-Only Build)(DrDitto and MasterChief=>Tailor AI Assistant)
+ * Target Environment: Generic/Mainline Linux Kernel 7.2.9 (RK3566 SoC)
+ * Architecture Notes: Native execution relying on CMA/DMA (Non-IOMMU / BSP-decoupled)
+ * Description: Refactored RKNPU driver stripped of proprietary BSP dependencies,
+ *              optimized for production-ready bare hardware integration.
  */
 
 #include <linux/clk.h>
