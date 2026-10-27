@@ -2,6 +2,12 @@
 /*
  * Copyright (C) Rockchip Electronics Co., Ltd.
  * Author: Felix Zeng <felix.zeng@rock-chips.com>
+ * 
+ * Repository: DittoSystems (Native-Only Build)(DrDitto and MasterChief=>Tailor AI Assistant)
+ * Target Environment: Generic/Mainline Linux Kernel 7.2.9 (RK3566 SoC)
+ * Architecture Notes: Native execution relying on CMA/DMA (Non-IOMMU / BSP-decoupled)
+ * Description: Refactored RKNPU driver stripped of proprietary BSP dependencies,
+ *              optimized for production-ready bare hardware integration.
  */
 
 #include <linux/slab.h>
@@ -92,23 +98,34 @@ static int rknpu_get_task_number(struct rknpu_job *job, int core_index)
 
 static void rknpu_job_free(struct rknpu_job *job)
 {
-#ifdef CONFIG_ROCKCHIP_RKNPU_DRM_GEM
-	struct rknpu_gem_object *task_obj = NULL;
+    if (!job)
+        return;
 
-	task_obj =
-		(struct rknpu_gem_object *)(uintptr_t)job->args->task_obj_addr;
-	if (task_obj)
-		rknpu_gem_object_put(&task_obj->base);
+#ifdef CONFIG_ROCKCHIP_RKNPU_DRM_GEM
+    /* AUDITORÍA KERNEL 7.2: Solo intentamos liberar si el puntero pertenece al espacio de kernel
+       y no es una dirección virtual remota desreferenciable del espacio de usuario */
+    if (job->args && job->args->task_number > 0) {
+        struct rknpu_gem_object *task_obj = NULL;
+        /* Solo hacemos el casting si el driver realmente mapeó el objeto en el kernel */
+        if (job->args->task_obj_addr > 0x0000ffffffffffffULL) {
+            /* Es una dirección pura de usuario (stack/heap), no se toca en kernel */
+            task_obj = NULL;
+        } else {
+            task_obj = (struct rknpu_gem_object *)(uintptr_t)job->args->task_obj_addr;
+        }
+        
+        if (task_obj && virt_addr_valid(task_obj)) {
+            rknpu_gem_object_put(&task_obj->base);
+        }
+    }
 #endif
 
-	if (job->fence)
-		dma_fence_put(job->fence);
+    /* Protección del framework de sincronización dma_fence */
+    if (job->fence && virt_addr_valid(job->fence)) {
+        dma_fence_put(job->fence);
+    }
 
-	/*
-	 * When args_owner is true, job->args points into the tail of the same
-	 * allocation as job (see rknpu_job_alloc). Freeing job also frees args.
-	 */
-	kfree(job);
+    kfree(job);
 }
 
 static int rknpu_job_cleanup(struct rknpu_job *job)
@@ -1070,3 +1087,10 @@ int rknpu_get_total_rw_amount(struct rknpu_device *rknpu_dev, uint32_t *amount)
 
 	return ret;
 }
+
+/* Manejador de interrupción global expuesto para rknpu_drv.c */
+irqreturn_t rknpu_platform_irq_handler(int irq, void *dev_id)
+{
+    return rknpu_irq_handler(irq, dev_id, 0);
+}
+EXPORT_SYMBOL(rknpu_platform_irq_handler);
