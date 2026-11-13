@@ -9,7 +9,7 @@ Tested on kernel 7.3.4
 |---|---|
 | Board | BigTreeTech Pi2 v1.0.1 (RK3566) |
 | OS | Armbian (Debian Trixie) |
-| Kernel | 7.3.4 |
+| Kernel | 7.3.4-silex-rockchip64 |
 | RKNN Runtime | librknnrt v2.3.2 |
 
 ## 2. Devfreq (DVFS)
