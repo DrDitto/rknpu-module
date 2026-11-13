@@ -36,4 +36,4 @@ echo 200000000 > /sys/class/devfreq/fde40000.npu/min_freq
 echo 800000000 > /sys/class/devfreq/fde40000.npu/max_freq
 ```
 ## 3. TODO
-  IOCTL control over userpace=======>Work in prfogress!!!
+  IOCTL control over userpace=======>Work in progress!!!
