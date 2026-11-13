@@ -1,0 +1,59 @@
+name: Build rknpu.ko
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      kernel_flavor:
+        description: 'Armbian kernel flavor'
+        required: true
+        default: 'edge'
+        type: choice
+        options: [edge, current]
+
+jobs:
+  build:
+    name: Build (${{ matrix.flavor }}-rockchip64)
+    runs-on: ubuntu-24.04-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [edge]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Armbian kernel headers (DietPi apt)
+        env:
+          FLAVOR: ${{ github.event.inputs.kernel_flavor || matrix.flavor }}
+        run: |
+          set -euo pipefail
+          sudo install -m 0755 -d /etc/apt/keyrings
+          sudo install -m 0644 .github/dietpi.asc /etc/apt/keyrings/dietpi.asc
+          echo "deb [signed-by=/etc/apt/keyrings/dietpi.asc] https://dietpi.com/apt all orangepi3b" | \
+            sudo tee /etc/apt/sources.list.d/dietpi.list
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            "linux-headers-${FLAVOR}-rockchip64" build-essential bc
+
+      - name: Build rknpu.ko
+        run: |
+          KVER=$(basename /usr/src/linux-headers-*-rockchip64 | sed 's/^linux-headers-//')
+          echo "KVER=$KVER" >> "$GITHUB_ENV"
+          make -j"$(nproc)" KDIR="/usr/src/linux-headers-${KVER}"
+
+      - name: Show module info
+        run: |
+          file rknpu.ko
+          modinfo rknpu.ko | grep -E '^(name|vermagic|description|license|depends):'
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rknpu-${{ env.KVER }}
+          path: |
+            rknpu.ko
+            Module.symvers
+          if-no-files-found: error
