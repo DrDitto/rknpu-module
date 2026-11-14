@@ -52,3 +52,17 @@ echo 800000000 > /sys/class/devfreq/fde40000.npu/max_freq
 ## 3. TODO
   IOCTL control over userpace=======>Work in progress!!!
   
+root@rk356x:/ext_storage/usb/sda/otten/rknpu-module# lsmod |grep rknpu
+rknpu                  53248  0
+root@rk356x:/ext_storage/usb/sda/otten/rknpu-module# dmesg
+[69046.125296] rknpu fde40000.npu: RKNPU [IRQ]: Asignado exitosamente IRQ virtual #106
+[69046.126644] [drm] Initialized rknpu 1.0.0 for fde40000.npu on minor 2
+[69046.130145] rknpu fde40000.npu: RKNPU: devfreq enabled, initial freq: 800000000 Hz, volt: 1000000 uV
+[69046.131028] rknpu fde40000.npu: RKNPU [SUCCESS]: Inicializado con exito con DRM Render Node y Devfreq limpio
+[69082.782876] RKNPU: job: 00000000fd89fdba, mask: 0x1, job iommu domain id: 0, dev iommu domain id: 0, wait_count: 1, continue wait: 0, commit elapse time: 10843500us, wait time: 10843503us, timeout: 10830000us
+[69082.784047] RKNPU: failed to wait job, task counter: 0, flags: 0x1, ret = 0, elapsed time: 10844675us
+[69082.886862] RKNPU: job timeout, flags: 0x0:
+[69082.887484] RKNPU:   core 0 irq status: 0x0, raw status: 0x10000, require mask: 0x300, task counter: 0x0, elapsed time: 10948114us
+[69082.990861] RKNPU: soft reset, num: 2
+root@rk356x:/ext_storage/usb/sda/otten/rknpu-module# 
+
