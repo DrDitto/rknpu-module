@@ -28,7 +28,7 @@ int main() {
     }
 
     /* 1. Cargar el modelo mobilenet.rknn en memoria */
-    const char *model_path = "./mobilenet.rknn";
+    const char *model_path = "./yolov5s-640-640.rknn";
     FILE *fp = fopen(model_path, "rb");
     if (!fp) {
         perror("[ERROR] No se pudo abrir mobilenet.rknn");

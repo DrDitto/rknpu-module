@@ -352,7 +352,7 @@ static struct rknpu_gem_object *rknpu_gem_init(struct drm_device *drm,
 	obj->funcs = &rknpu_gem_object_funcs;
 
 	ret = drm_gem_object_init(drm, obj, size);
-   rknpu_obj->base.funcs = &rknpu_gem_object_funcs;
+    rknpu_obj->base.funcs = &rknpu_gem_object_funcs;
 	if (ret < 0) {
 		LOG_DEV_ERROR(drm->dev, "failed to initialize gem object\n");
 		kfree(rknpu_obj);
@@ -1021,7 +1021,6 @@ static int rknpu_gem_mmap_buffer(struct rknpu_gem_object *rknpu_obj,
 
 	vm_flags_set(vma, VM_DONTCOPY | VM_DONTEXPAND | VM_DONTDUMP | VM_IO);
 	vm_flags_clear(vma, VM_PFNMAP);
-	/* vma->vm_pgoff = 0; */
 
 	vm_size = vma->vm_end - vma->vm_start;
 
@@ -1126,7 +1125,6 @@ int rknpu_gem_mmap(struct file *filp, struct vm_area_struct *vma)
    struct drm_gem_object *obj = NULL;
    int ret = -EINVAL;
 
-   /* 1. Ejecutamos la validación core nativa de DRM para asociar el objeto al VMA */
    ret = drm_gem_mmap(filp, vma);
    if (ret < 0)
            return ret;
@@ -1136,7 +1134,6 @@ int rknpu_gem_mmap(struct file *filp, struct vm_area_struct *vma)
    if (obj->import_attach)
            return dma_buf_mmap(obj->dma_buf, vma, 0);
 
-   /* 2. Invocamos de forma obligatoria al mapeador físico para inyectar las PFN de la RAM contigua */
    return rknpu_gem_mmap_obj(obj, vma);
 }
 
@@ -1349,7 +1346,7 @@ int rknpu_gem_sync_ioctl(struct drm_device *dev, void *data,
 	struct rknpu_device *rknpu_dev = dev->dev_private;
 	struct rknpu_mem_sync *args = data;
 	struct scatterlist *sg;
-	dma_addr_t sg_phys_addr;
+	dma_addr_t sg_dma_addr;
 	unsigned long length, offset = 0;
 	unsigned long sg_offset, sg_left, size = 0;
 	unsigned long len = 0;
@@ -1410,7 +1407,8 @@ int rknpu_gem_sync_ioctl(struct drm_device *dev, void *data,
 			if (len <= offset)
 				continue;
 
-			sg_phys_addr = sg_phys(sg);
+			/* FIX: Use sg_dma_address instead of physical address for DMA sync */
+			sg_dma_addr = sg_dma_address(sg);
 
 			sg_left = len - offset;
 			sg_offset = sg->length - sg_left;
@@ -1419,13 +1417,13 @@ int rknpu_gem_sync_ioctl(struct drm_device *dev, void *data,
 
 			if (args->flags & RKNPU_MEM_SYNC_TO_DEVICE) {
 				dma_sync_single_range_for_device(
-					sync_dev, sg_phys_addr,
+					sync_dev, sg_dma_addr,
 					sg_offset, size, DMA_TO_DEVICE);
 			}
 
 			if (args->flags & RKNPU_MEM_SYNC_FROM_DEVICE) {
 				dma_sync_single_range_for_cpu(
-					sync_dev, sg_phys_addr,
+					sync_dev, sg_dma_addr,
 					sg_offset, size, DMA_FROM_DEVICE);
 			}
 

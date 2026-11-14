@@ -14,6 +14,7 @@
 #include <linux/delay.h>
 #include <linux/sync_file.h>
 #include <linux/io.h>
+#include <linux/dma-mapping.h>
 
 #include "rknpu_ioctl.h"
 #include "rknpu_drv.h"
@@ -320,11 +321,27 @@ static inline int rknpu_job_subcore_commit_pc(struct rknpu_job *job,
 	int submit_index = atomic_read(&job->submit_count[core_index]);
 	int max_submit_number = rknpu_dev->config->max_submit_number;
 	unsigned long flags;
+	u32 base_dma_addr = 0;
+	u32 regcmd_dma_addr = 0;
 
 	if (!task_obj) {
 		job->ret = -EINVAL;
 		return job->ret;
 	}
+
+	if (task_obj->dma_addr) {
+		base_dma_addr = task_obj->dma_addr;
+	} else if (task_obj->iova_start) {
+		base_dma_addr = task_obj->iova_start;
+	} else {
+		base_dma_addr = args->task_base_addr;
+	}
+
+	if (!base_dma_addr) {
+		base_dma_addr = args->task_base_addr;
+	}
+
+	args->task_base_addr = base_dma_addr;
 
 	if (rknpu_dev->config->num_irqs > 1) {
 		for (i = 0; i < rknpu_dev->config->num_irqs; i++) {
@@ -361,16 +378,33 @@ static inline int rknpu_job_subcore_commit_pc(struct rknpu_job *job,
 	task_end = task_start + task_number - 1;
 
 	task_base = task_obj->kv_addr;
+	if (!task_base) {
+		LOG_ERROR("task_obj kv_addr is NULL!\n");
+		job->ret = -EINVAL;
+		return job->ret;
+	}
 
 	first_task = &task_base[task_start];
 	last_task = &task_base[task_end];
 
+	/* Cálculo exacto del IOVA por lote para subtareas */
+	regcmd_dma_addr = args->task_base_addr + ((void *)first_task - (void *)task_base);
+
+	/* Sincronización obligatoria de caché DMA hacia el dispositivo bajo IOMMU */
+	if (task_obj->flags & RKNPU_MEM_CACHEABLE) {
+		dma_sync_single_range_for_device(
+			rknpu_dev->dev, base_dma_addr,
+			(unsigned long)((void *)first_task - (void *)task_base),
+			(task_end - task_start + 1) * sizeof(struct rknpu_task),
+			DMA_TO_DEVICE);
+	}
+
 	if (rknpu_dev->config->pc_dma_ctrl) {
 		spin_lock_irqsave(&rknpu_dev->irq_lock, flags);
-		REG_WRITE(first_task->regcmd_addr, RKNPU_OFFSET_PC_DATA_ADDR);
+		REG_WRITE(regcmd_dma_addr, RKNPU_OFFSET_PC_DATA_ADDR);
 		spin_unlock_irqrestore(&rknpu_dev->irq_lock, flags);
 	} else {
-		REG_WRITE(first_task->regcmd_addr, RKNPU_OFFSET_PC_DATA_ADDR);
+		REG_WRITE(regcmd_dma_addr, RKNPU_OFFSET_PC_DATA_ADDR);
 	}
 
 	REG_WRITE((first_task->regcfg_amount + RKNPU_PC_DATA_EXTRA_AMOUNT +

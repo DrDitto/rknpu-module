@@ -9,70 +9,7 @@
 #include <drm/drm.h>
 #include <drm/drm_mode.h>
 
-#define RKNPU_MEM_NON_CONTIGUOUS  (1 << 1)
-#define RKNPU_MEM_WRITE_COMBINE   (1 << 2)
-#define RKNPU_MEM_KERNEL_MAPPING  (1 << 4)
-#define RKNPU_JOB_PC              (1 << 0)
-
-struct rknpu_version {
-    uint32_t major;
-    uint32_t minor;
-    uint32_t patchlevel;
-};
-
-struct rknpu_mem_create {
-    unsigned int handle;
-    unsigned int flags;
-    unsigned int size;
-    unsigned int sram_size;
-    int iommu_domain_id;
-    unsigned int core_mask;
-    unsigned long long obj_addr;
-    unsigned long long dma_addr;
-} __attribute__((aligned(8)));
-
-struct rknpu_mem_map {
-    unsigned int handle;
-    unsigned int pad;
-    unsigned long long offset;
-} __attribute__((aligned(8)));
-
-struct rknpu_submit {
-    unsigned int flags;
-    unsigned int timeout;
-    unsigned int task_start;
-    unsigned int task_number;
-    unsigned int task_counter;
-    unsigned int core_mask;
-    unsigned int priority;
-    unsigned int fmt;
-    int iommu_domain_id;
-    unsigned int pad;
-    unsigned long long task_base_addr;
-    unsigned long long task_obj_addr;
-    int fence_fd;
-    unsigned int subcore_task[2];
-    unsigned long long reserved[2];
-} __attribute__((aligned(8)));
-
-struct rknpu_task {
-    unsigned int flags;
-    unsigned int size;
-    unsigned long long regcmd_addr;
-    unsigned long long regcfg_addr;
-    unsigned int regcfg_amount;
-    unsigned int int_mask;
-} __attribute__((aligned(8)));
-
-#define DRM_RKNPU_GET_VERSION 0x00
-#define DRM_RKNPU_MEM_CREATE  0x02
-#define DRM_RKNPU_MEM_MAP     0x03
-#define DRM_RKNPU_SUBMIT      0x01
-
-#define DRM_RKNPU_VERSION_CMD    DRM_IOWR(DRM_COMMAND_BASE + DRM_RKNPU_GET_VERSION, struct rknpu_version)
-#define DRM_RKNPU_MEM_CREATE_CMD DRM_IOWR(DRM_COMMAND_BASE + DRM_RKNPU_MEM_CREATE, struct rknpu_mem_create)
-#define DRM_RKNPU_MEM_MAP_CMD    DRM_IOWR(DRM_COMMAND_BASE + DRM_RKNPU_MEM_MAP, struct rknpu_mem_map)
-#define DRM_RKNPU_SUBMIT_CMD     DRM_IOWR(DRM_COMMAND_BASE + DRM_RKNPU_SUBMIT, struct rknpu_submit)
+#include "rknpu_ioctl.h"
 
 int main() {
     int fd = open("/dev/dri/renderD129", O_RDWR);
@@ -82,29 +19,42 @@ int main() {
     }
     printf("[INIT] ¡Éxito! renderD129 abierto correctamente (fd = %d)\n", fd);
 
-    /* 1. Creación de memoria GEM con mapeo de kernel obligatorio */
+    /* 1. Creación de memoria GEM con DRM_IOCTL_RKNPU_MEM_CREATE */
     struct rknpu_mem_create mem_arg;
     memset(&mem_arg, 0, sizeof(mem_arg));
     
     mem_arg.size = 65536; /* 64 KB */
-    mem_arg.flags = RKNPU_MEM_NON_CONTIGUOUS | RKNPU_MEM_WRITE_COMBINE | RKNPU_MEM_KERNEL_MAPPING;
+    mem_arg.flags = RKNPU_MEM_NON_CONTIGUOUS | RKNPU_MEM_WRITE_COMBINE | RKNPU_MEM_KERNEL_MAPPING | RKNPU_MEM_IOMMU;
     mem_arg.core_mask = 0;
     mem_arg.iommu_domain_id = 0;
 
-    if (ioctl(fd, DRM_RKNPU_MEM_CREATE_CMD, &mem_arg) != 0) {
+    if (ioctl(fd, DRM_IOCTL_RKNPU_MEM_CREATE, &mem_arg) != 0) {
         perror("[GEM] Fallo al crear memoria GEM");
         close(fd);
         return 1;
     }
+
+    /* Respaldo: si dma_addr es 0, usamos obj_addr como base DMA */
+    if (mem_arg.dma_addr == 0 && mem_arg.obj_addr != 0) {
+        mem_arg.dma_addr = mem_arg.obj_addr;
+        printf("[GEM-FIX] dma_addr ajustado mediante obj_addr: 0x%llx\n", (unsigned long long)mem_arg.dma_addr);
+    }
+
     printf("[GEM] Buffer creado -> Handle: 0x%x, Dir DMA: 0x%llx, Obj Kernel: 0x%llx\n", 
            mem_arg.handle, (unsigned long long)mem_arg.dma_addr, (unsigned long long)mem_arg.obj_addr);
+
+    if (mem_arg.dma_addr == 0) {
+        fprintf(stderr, "[ERROR] La dirección DMA sigue siendo 0x0.\n");
+        close(fd);
+        return 1;
+    }
 
     /* 2. Mapeo de memoria con mmap para espacio de usuario */
     struct rknpu_mem_map map_arg;
     memset(&map_arg, 0, sizeof(map_arg));
     map_arg.handle = mem_arg.handle;
 
-    if (ioctl(fd, DRM_RKNPU_MEM_MAP_CMD, &map_arg) != 0) {
+    if (ioctl(fd, DRM_IOCTL_RKNPU_MEM_MAP, &map_arg) != 0) {
         perror("[MAP] Fallo al obtener offset de mapeo GEM");
         close(fd);
         return 1;
@@ -117,21 +67,25 @@ int main() {
         return 1;
     }
 
-    /* 3. Escribir estructura de tarea y stream de comandos */
+    /* 3. Escribir estructura de tarea en el inicio y comandos en un offset seguro (256 bytes) */
     struct rknpu_task *task = (struct rknpu_task *)mapped_ptr;
+    memset(task, 0, sizeof(struct rknpu_task));
     task->flags = 0;
-    task->size = sizeof(struct rknpu_task);
-    task->regcmd_addr = mem_arg.dma_addr + 1024;
-    task->regcfg_amount = 0;
+    task->op_idx = 0;
+    task->enable_mask = 0x1;
     task->int_mask = 0x3;
+    task->int_clear = RKNPU_INT_CLEAR;
+    task->int_status = 0;
+    task->regcfg_amount = 0;
+    task->regcfg_offset = 0;
+    task->regcmd_addr = mem_arg.dma_addr + 256; // Comando separado de la estructura de tarea
 
-    uint32_t *cmd_stream = (uint32_t *)((char *)mapped_ptr + 1024);
-    cmd_stream[0] = 0x00000000;
-    cmd_stream[1] = 0x00000000;
+    uint32_t *cmd_stream = (uint32_t *)((char *)mapped_ptr + 256);
+    cmd_stream[0] = 0x00000000; // NOP / Fin de instrucciones
 
-    printf("[TASK] Metadatos y stream escritos en el búfer GEM.\n");
+    printf("[TASK] Estructura de tarea y stream separados correctamente en el búfer GEM.\n");
 
-    /* 4. Envío de Job Submit */
+    /* 4. Envío de Job Submit usando DRM_IOCTL_RKNPU_SUBMIT */
     struct rknpu_submit submit_arg;
     memset(&submit_arg, 0, sizeof(submit_arg));
 
@@ -140,12 +94,13 @@ int main() {
     submit_arg.task_start = 0;
     submit_arg.task_number = 1;
     submit_arg.task_counter = 1;
+    submit_arg.priority = 0;
     submit_arg.core_mask = 1;
     submit_arg.iommu_domain_id = 0;
     submit_arg.task_base_addr = mem_arg.dma_addr;
-    submit_arg.task_obj_addr = mem_arg.obj_addr;
+    submit_arg.task_obj_addr = 0;
 
-    if (ioctl(fd, DRM_RKNPU_SUBMIT_CMD, &submit_arg) == 0) {
+    if (ioctl(fd, DRM_IOCTL_RKNPU_SUBMIT, &submit_arg) == 0) {
         printf("[SUBMIT] ¡Job enviado y procesado con éxito por el driver!\n");
     } else {
         perror("[SUBMIT] Error en la ejecución del Job Submit");
