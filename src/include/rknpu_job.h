@@ -3,7 +3,7 @@
  * Copyright (C) Rockchip Electronics Co., Ltd.
  * Author: Felix Zeng <felix.zeng@rock-chips.com>
  *
- * Target: RK3566/RK3568 (Single-Core NPU) | Linux Kernel >= 7.2.0
+ * Target: RK3566 / RK3568 (single-core NPU, DRM Render Node + IOMMU)
  */
 
 #ifndef __LINUX_RKNPU_JOB_H_
@@ -12,32 +12,33 @@
 #include <linux/spinlock.h>
 #include <linux/dma-fence.h>
 #include <linux/irq.h>
+
 #include <drm/drm_device.h>
 
 #include "rknpu_ioctl.h"
 
 #define RKNPU_MAX_CORES 1
 
-#define RKNPU_JOB_DONE		(1 << 0)
-#define RKNPU_JOB_ASYNC		(1 << 1)
-#define RKNPU_JOB_DETACHED	(1 << 2)
+#define RKNPU_JOB_DONE (1 << 0)
+#define RKNPU_JOB_ASYNC (1 << 1)
+#define RKNPU_JOB_DETACHED (1 << 2)
 
-#define RKNPU_CORE_AUTO_MASK	0x00
-#define RKNPU_CORE0_MASK	0x01
+#define RKNPU_CORE_AUTO_MASK 0x00
+#define RKNPU_CORE0_MASK 0x01
 
 struct rknpu_job {
 	struct rknpu_device *rknpu_dev;
-	struct list_head head;
+	struct list_head head[RKNPU_MAX_CORES];
 	struct work_struct cleanup_work;
-	bool irq_entry;
+	bool irq_entry[RKNPU_MAX_CORES];
 	unsigned int flags;
 	int ret;
 	struct rknpu_submit *args;
 	bool args_owner;
 	struct rknpu_task *first_task;
 	struct rknpu_task *last_task;
-	uint32_t int_mask;
-	uint32_t int_status;
+	uint32_t int_mask[RKNPU_MAX_CORES];
+	uint32_t int_status[RKNPU_MAX_CORES];
 	struct dma_fence *fence;
 	ktime_t timestamp;
 	uint32_t use_core_num;
@@ -46,14 +47,17 @@ struct rknpu_job {
 	ktime_t hw_commit_time;
 	ktime_t hw_recoder_time;
 	ktime_t hw_elapse_time;
-	atomic_t submit_count;
+	atomic_t submit_count[RKNPU_MAX_CORES];
 	int iommu_domain_id;
 };
 
 irqreturn_t rknpu_core0_irq_handler(int irq, void *data);
+irqreturn_t rknpu_platform_irq_handler(int irq, void *dev_id);
 
+#ifdef CONFIG_ROCKCHIP_RKNPU_DRM_GEM
 int rknpu_submit_ioctl(struct drm_device *dev, void *data,
 		       struct drm_file *file_priv);
+#endif
 
 int rknpu_get_hw_version(struct rknpu_device *rknpu_dev, uint32_t *version);
 
