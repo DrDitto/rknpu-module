@@ -2,12 +2,8 @@
 /*
  * Copyright (C) Rockchip Electronics Co., Ltd.
  * Author: Felix Zeng <felix.zeng@rock-chips.com>
- * 
- * Repository: DittoSystems (Native-Only Build)(DrDitto and MasterChief=>Tailor AI Assistant)
- * Target Environment: Generic/Mainline Linux Kernel 7.2.9 (RK3566 SoC)
- * Architecture Notes: Native execution relying on CMA/DMA (Non-IOMMU / BSP-decoupled)
- * Description: Refactored RKNPU driver stripped of proprietary BSP dependencies,
- *              optimized for production-ready bare hardware integration.
+ *
+ * Target: RK3566/RK3568 | IOMMU | Linux Kernel >= 7.2.0
  */
 
 #include <linux/delay.h>
@@ -15,27 +11,9 @@
 
 #include "rknpu_reset.h"
 
-#ifndef FPGA_PLATFORM
-static inline struct reset_control *rknpu_reset_control_get(struct device *dev,
-							    const char *name)
-{
-	struct reset_control *rst = NULL;
-
-	rst = devm_reset_control_get(dev, name);
-	if (IS_ERR(rst))
-		LOG_DEV_ERROR(dev,
-			      "failed to get rknpu reset control: %s, %ld\n",
-			      name, PTR_ERR(rst));
-
-	return rst;
-}
-#endif
-
 int rknpu_reset_get(struct rknpu_device *rknpu_dev)
 {
-#ifndef FPGA_PLATFORM
-	int i = 0;
-	int num_srsts = 0;
+	int i, num_srsts;
 
 	num_srsts = of_count_phandle_with_args(rknpu_dev->dev->of_node,
 					       "resets", "#reset-cells");
@@ -60,17 +38,12 @@ int rknpu_reset_get(struct rknpu_device *rknpu_dev)
 	}
 
 	rknpu_dev->num_srsts = num_srsts;
-
 	return num_srsts;
-#endif
-
-	return 0;
 }
 
-#ifndef FPGA_PLATFORM
 static int rknpu_reset_assert(struct reset_control *rst)
 {
-	int ret = -EINVAL;
+	int ret;
 
 	if (!rst)
 		return -EINVAL;
@@ -80,13 +53,12 @@ static int rknpu_reset_assert(struct reset_control *rst)
 		LOG_ERROR("failed to assert rknpu reset: %d\n", ret);
 		return ret;
 	}
-
 	return 0;
 }
 
 static int rknpu_reset_deassert(struct reset_control *rst)
 {
-	int ret = -EINVAL;
+	int ret;
 
 	if (!rst)
 		return -EINVAL;
@@ -96,17 +68,13 @@ static int rknpu_reset_deassert(struct reset_control *rst)
 		LOG_ERROR("failed to deassert rknpu reset: %d\n", ret);
 		return ret;
 	}
-
 	return 0;
 }
-#endif
 
 int rknpu_soft_reset(struct rknpu_device *rknpu_dev)
 {
-#ifndef FPGA_PLATFORM
-	struct iommu_domain *domain = NULL;
-	struct rknpu_subcore_data *subcore_data = NULL;
-	int ret = 0, i = 0;
+	struct iommu_domain *domain;
+	int ret = 0, i;
 
 	if (rknpu_dev->bypass_soft_reset) {
 		LOG_WARN("bypass soft reset\n");
@@ -117,13 +85,9 @@ int rknpu_soft_reset(struct rknpu_device *rknpu_dev)
 		return 0;
 
 	rknpu_dev->soft_reseting = true;
-
 	msleep(100);
 
-	for (i = 0; i < rknpu_dev->config->num_irqs; ++i) {
-		subcore_data = &rknpu_dev->subcore_datas[i];
-		wake_up(&subcore_data->job_done_wq);
-	}
+	wake_up(&rknpu_dev->subcore_data.job_done_wq);
 
 	LOG_INFO("soft reset, num: %d\n", rknpu_dev->num_srsts);
 
@@ -144,9 +108,7 @@ int rknpu_soft_reset(struct rknpu_device *rknpu_dev)
 		return ret;
 	}
 
-	if (rknpu_dev->iommu_en)
-		domain = iommu_get_domain_for_dev(rknpu_dev->dev);
-
+	domain = iommu_get_domain_for_dev(rknpu_dev->dev);
 	if (domain) {
 		iommu_detach_device(domain, rknpu_dev->dev);
 		iommu_attach_device(domain, rknpu_dev->dev);
@@ -154,11 +116,9 @@ int rknpu_soft_reset(struct rknpu_device *rknpu_dev)
 
 	rknpu_dev->soft_reseting = false;
 
-	if (rknpu_dev->config->state_init != NULL)
+	if (rknpu_dev->config->state_init)
 		rknpu_dev->config->state_init(rknpu_dev);
 
 	mutex_unlock(&rknpu_dev->reset_lock);
-#endif
-
 	return 0;
 }

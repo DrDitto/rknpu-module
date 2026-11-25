@@ -2,6 +2,8 @@
 /*
  * Copyright (C) Rockchip Electronics Co., Ltd.
  * Author: Felix Zeng <felix.zeng@rock-chips.com>
+ *
+ * Target: RK3566/RK3568 | Linux Kernel >= 7.2.0
  */
 
 #ifndef __LINUX_RKNPU_IOMMU_H
@@ -13,34 +15,15 @@
 #include <linux/iova.h>
 #include <linux/version.h>
 
-#if KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE
-#include <linux/dma-iommu.h>
+#if LINUX_VERSION_CODE < KERNEL_VERSION(7, 2, 0)
+#error "This driver requires Linux Kernel 7.2.0 or newer"
 #endif
 
 #include "rknpu_drv.h"
 
-#if KERNEL_VERSION(6, 15, 0) <= LINUX_VERSION_CODE
-/*
- * Since v6.15, the kernel removed the 'type' field from iommu_dma_cookie
- * and split MSI cookie into a separate struct. The iovad field is now at
- * offset 0.
- */
 struct rknpu_iommu_dma_cookie {
 	struct iova_domain iovad;
 };
-#else
-enum iommu_dma_cookie_type {
-	IOMMU_DMA_IOVA_COOKIE,
-	IOMMU_DMA_MSI_COOKIE,
-};
-
-struct rknpu_iommu_dma_cookie {
-	enum iommu_dma_cookie_type type;
-
-	/* Full allocator for IOMMU_DMA_IOVA_COOKIE */
-	struct iova_domain iovad;
-};
-#endif
 
 dma_addr_t rknpu_iommu_dma_alloc_iova(struct iommu_domain *domain, size_t size,
 				      u64 dma_limit, struct device *dev,
@@ -64,8 +47,4 @@ int rknpu_iommu_domain_get_and_switch(struct rknpu_device *rknpu_dev,
 				      int domain_id);
 int rknpu_iommu_domain_put(struct rknpu_device *rknpu_dev);
 
-#if KERNEL_VERSION(5, 10, 0) < LINUX_VERSION_CODE
-int iommu_get_dma_cookie(struct iommu_domain *domain);
-#endif
-
-#endif
+#endif /* __LINUX_RKNPU_IOMMU_H */

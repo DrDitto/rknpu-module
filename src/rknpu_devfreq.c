@@ -2,12 +2,8 @@
 /*
  * Copyright (C) Rockchip Electronics Co., Ltd.
  * Author: Felix Zeng <felix.zeng@rock-chips.com>
- * 
- * Repository: DittoSystems (Native-Only Build)(DrDitto and MasterChief=>Tailor AI Assistant)
- * Target Environment: Generic/Mainline Linux Kernel 7.2.9 (RK3566 SoC)
- * Architecture Notes: Native execution relying on CMA/DMA (Non-IOMMU / BSP-decoupled)
- * Description: Refactored RKNPU driver stripped of proprietary BSP dependencies,
- *              optimized for production-ready bare hardware integration.
+ *
+ * Target: RK3566/RK3568 | Linux Kernel >= 7.2.0
  */
 
 #include <linux/clk.h>
@@ -16,18 +12,9 @@
 #include <linux/pm_opp.h>
 #include <linux/pm_runtime.h>
 #include <linux/regulator/consumer.h>
-#include <linux/version.h>
 
 #include "rknpu_drv.h"
 #include "rknpu_devfreq.h"
-
-/* ------------------------------------------------------------------ */
-/*  Custom "rknpu_ondemand" governor                                  */
-/*                                                                    */
-/*  The driver sets rknpu_dev->ondemand_freq whenever a job is        */
-/*  submitted (ramp up) or the idle timer fires (ramp down).          */
-/*  The governor simply forwards that frequency to the devfreq core.  */
-/* ------------------------------------------------------------------ */
 
 static int devfreq_rknpu_ondemand_func(struct devfreq *df,
 				       unsigned long *freq)
@@ -53,10 +40,6 @@ static struct devfreq_governor devfreq_rknpu_ondemand = {
 	.get_target_freq = devfreq_rknpu_ondemand_func,
 	.event_handler = devfreq_rknpu_ondemand_handler,
 };
-
-/* ------------------------------------------------------------------ */
-/*  devfreq profile callbacks                                         */
-/* ------------------------------------------------------------------ */
 
 static int npu_devfreq_target(struct device *dev, unsigned long *freq,
 			      u32 flags)
@@ -96,26 +79,17 @@ static int npu_devfreq_get_dev_status(struct device *dev,
 				      struct devfreq_dev_status *stat)
 {
 	struct rknpu_device *rknpu_dev = dev_get_drvdata(dev);
-	struct rknpu_subcore_data *subcore_data;
 	unsigned long flags;
-	ktime_t busy = 0;
+	ktime_t busy;
 
 	stat->current_frequency = rknpu_dev->current_freq;
 
-	/*
-	 * Aggregate busy_time across all subcores.  The hrtimer handler
-	 * snapshots total_busy_time every RKNPU_LOAD_INTERVAL (1 s).
-	 */
-	for (int i = 0; i < rknpu_dev->config->num_irqs; i++) {
-		subcore_data = &rknpu_dev->subcore_datas[i];
-		spin_lock_irqsave(&rknpu_dev->irq_lock, flags);
-		busy += subcore_data->timer.total_busy_time;
-		spin_unlock_irqrestore(&rknpu_dev->irq_lock, flags);
-	}
+	spin_lock_irqsave(&rknpu_dev->irq_lock, flags);
+	busy = rknpu_dev->subcore_data.timer.total_busy_time;
+	spin_unlock_irqrestore(&rknpu_dev->irq_lock, flags);
 
-	/* Express times in microseconds for the devfreq governor. */
 	stat->busy_time = ktime_to_us(busy);
-	stat->total_time = RKNPU_LOAD_INTERVAL / 1000; /* ns -> us */
+	stat->total_time = RKNPU_LOAD_INTERVAL / 1000;
 
 	return 0;
 }
@@ -134,10 +108,6 @@ static struct devfreq_dev_profile npu_devfreq_profile = {
 	.get_dev_status = npu_devfreq_get_dev_status,
 	.get_cur_freq = npu_devfreq_get_cur_freq,
 };
-
-/* ------------------------------------------------------------------ */
-/*  Public API consumed by rknpu_drv.c                                */
-/* ------------------------------------------------------------------ */
 
 void rknpu_devfreq_lock(struct rknpu_device *rknpu_dev)
 {
@@ -161,13 +131,6 @@ int rknpu_devfreq_init(struct rknpu_device *rknpu_dev)
 	int ret;
 	static const char * const reg_names[] = { "rknpu", NULL };
 
-	/*
-	 * Tell the OPP framework which regulator and clock to manage.
-	 * "rknpu" matches the DT property "rknpu-supply = <&vdd_npu>".
-	 * "scmi_clk" is the first clock in the NPU node's clocks list
-	 * and the one whose rate actually controls the NPU frequency
-	 * through the SCMI firmware.
-	 */
 	ret = devm_pm_opp_set_regulators(dev, reg_names);
 	if (ret) {
 		LOG_DEV_ERROR(dev, "failed to set OPP regulators: %d\n", ret);
