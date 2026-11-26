@@ -11,7 +11,7 @@ Tested on kernel 7.3.6
 | OS | Armbian (Debian Trixie) |
 | Kernel | 7.3.6silex-rockchip64 |
 | RKNN Runtime | librknnrt v2.3.2 |
-| This is a port from BSP and closed to RK35668/RK3566 only. All other HW implementation has been dropped
+This is a port from BSP and closed to RK35668/RK3566 only. All other HW implementation has been dropped
 ## 2. Devfreq (DVFS)
 
 The driver supports dynamic voltage and frequency scaling via the standard Linux devfreq framework. When an OPP table is present in the DTB, the driver automatically registers a devfreq device at `/sys/class/devfreq/fde40000.npu/`.
